@@ -85,7 +85,8 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
             )
 
         # 获取已 pretrain 的模型 tokenizer 和 generator
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # model_name 在 confs/cli_lean4_{...}.yaml 中指定
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name) 
         self.generator = T5ForConditionalGeneration.from_pretrained(model_name)
 
         # 初始化 topk accuracies, 用于衡量模型生成的前 k 个预测结果中是否包含正确答案
@@ -95,12 +96,14 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
             self.topk_accuracies[k] = acc
             self.add_module(f"top{k}_acc_val", acc)
 
+    # 载入模型的 checkpoint
     @classmethod
     def load(
         cls, ckpt_path: str, device, freeze: bool
     ) -> "RetrievalAugmentedGenerator":
         return load_checkpoint(cls, ckpt_path, device, freeze)
 
+    # 使用 generator 根据 state 生成 tactic 并返回 loss
     def forward(
         self,
         state_ids: torch.Tensor,
@@ -117,6 +120,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
     # Training #
     ############
 
+    # 训练一个 batch, 返回 loss
     def training_step(self, batch, batch_idx: int):
         # 模型前向传播：通过调用 self(...) 处理输入数据，包括状态 ID (state_ids)、状态掩码 (state_mask) 和策略 ID (tactic_ids)，计算得到损失值。
         loss = self(
@@ -135,11 +139,13 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
         self._log_io_texts("train", batch["state_ids"], batch["tactic_ids"])
         return loss
 
+    # 根据参数返回优化器
     def configure_optimizers(self) -> Dict[str, Any]:
         return get_optimizers(
             self.parameters(), self.trainer, self.lr, self.warmup_steps
         )
 
+    # 以文本形式记录输入输出
     def _log_io_texts(
         self,
         split: str,
@@ -158,6 +164,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
             step=self.global_step,
         )
 
+    # 训练开始时记录超参数, 加载文本集
     def on_fit_start(self) -> None:
         if self.logger is not None:
             self.logger.log_hyperparams(self.hparams)
@@ -171,6 +178,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
     # Validation #
     ##############
 
+    # 验证一个 batch, 记录 topk 准确率
     def validation_step(self, batch: Dict[str, Any], _) -> None:
         state_ids = batch["state_ids"]
         state_mask = batch["state_mask"]
@@ -213,6 +221,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
                 sync_dist=True,
             )
 
+    # 在验证结束后保存模型
     def on_validation_epoch_end(self) -> None:
         if self.eval_num_theorems == 0 or self.logger is None:
             return
@@ -236,6 +245,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
                 open(indexed_corpus_path, "wb"),
             )
             torch.cuda.empty_cache()
+            # 评估整个 prover 的性能
             acc = evaluate(
                 data_path=self.trainer.datamodule.data_path,
                 num_workers=self.eval_num_workers,

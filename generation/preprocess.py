@@ -39,6 +39,7 @@ def main() -> None:
         logger.info(data[0])
         dst_path = args.dst_path + f"_{split}.json"
         json.dump(data, open(dst_path, "wt"))
+        # 数据默认存储在当前文件夹下的 state_tactic_pairs_{split}.json
         logger.info(f"Preprocessed data saved to {dst_path}")
 
 
