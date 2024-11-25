@@ -23,6 +23,7 @@ def main() -> None:
         pairs = []
         for thm in json.load(open(data_path)):
             for tac in thm["traced_tactics"]:
+                # 输入为 state_before, 输出为 tactic
                 pairs.append({"state": tac["state_before"], "output": tac["tactic"]})
         logger.info(f"Read {len(pairs)} state-tactic paris from {data_path}")
 
