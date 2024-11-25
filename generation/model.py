@@ -75,6 +75,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
         self.max_inp_seq_len = max_inp_seq_len
         self.max_oup_seq_len = max_oup_seq_len
 
+        # 获取 retriever
         if ret_ckpt_path is None:
             self.retriever = None
         else:
@@ -83,9 +84,11 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
                 ret_ckpt_path, self.device, freeze=True
             )
 
+        # 获取已 pretrain 的模型 tokenizer 和 generator
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.generator = T5ForConditionalGeneration.from_pretrained(model_name)
 
+        # 初始化 topk accuracies, 用于衡量模型生成的前 k 个预测结果中是否包含正确答案
         self.topk_accuracies = dict()
         for k in range(1, num_beams + 1):
             acc = TopkAccuracy(k)
@@ -115,6 +118,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
     ############
 
     def training_step(self, batch, batch_idx: int):
+        # 模型前向传播：通过调用 self(...) 处理输入数据，包括状态 ID (state_ids)、状态掩码 (state_mask) 和策略 ID (tactic_ids)，计算得到损失值。
         loss = self(
             batch["state_ids"],
             batch["state_mask"],

@@ -9,10 +9,39 @@ from transformers import AutoModelForSeq2SeqLM, AutoModelForCausalLM, AutoTokeni
 from retrieval.model import PremiseRetriever
 from common import remove_marks, zip_strict, format_augmented_state
 
+"""一个策略生成器接口，用于从当前状态生成多个可能的策略候选。
 
+此抽象类定义了策略生成器的基本接口，需要被具体的生成器类实现。
+
+Attributes:
+    无类属性
+
+Methods:
+    initialize: 初始化生成器，在使用前必须调用
+    generate: 异步方法，根据输入状态生成多个策略候选
+
+用法示例:
+    class MyGenerator(TacticGenerator):
+        async def generate(self, state, ...):
+            # 实现策略生成逻辑
+            return candidates
+"""
 class TacticGenerator(ABC):
     """A tactic generator takes a state and generates multiple tactic candidates."""
 
+    
+
+    """初始化生成器
+
+    这是一个抽象方法,用于初始化生成器的相关组件和状态。
+    继承本类的子类必须实现该方法。
+
+    返回:
+        None: 这个方法不返回任何值
+
+    抛出:
+        NotImplementedError: 该方法是抽象的,必须由子类实现
+    """
     @abstractmethod
     def initialize(self) -> None:
         raise NotImplementedError
@@ -298,7 +327,7 @@ class RetrievalAugmentedGenerator(TacticGenerator):
         )
 
 
-class VllmGenerator(TacticGenerator):
+class VllmGenerator(TacticGenerator):   
     def __init__(self, vllm_actor, template: str = "[GOAL]\n%s\n[PROOFSTEP]\n") -> None:
         self.vllm_actor = vllm_actor
         self.template = template
