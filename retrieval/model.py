@@ -311,6 +311,7 @@ class PremiseRetriever(pl.LightningModule):
             retrieved_premises,
             scores,
         ):
+            # predict 中包含了 url, commit, file_path, full_name, start, tactic_idx, context, all_pos_premises, retrieved_premises, scores
             self.predict_step_outputs.append(
                 {
                     "url": url,

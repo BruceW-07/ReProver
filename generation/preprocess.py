@@ -21,12 +21,14 @@ def main() -> None:
     for split in ("train", "val"):
         data_path = os.path.join(args.data_path, f"{split}.json")
         pairs = []
+        # 遍历 thm 中的 traced_tactics, 将 state_before 和 tactic 作为输入输出对
         for thm in json.load(open(data_path)):
             for tac in thm["traced_tactics"]:
                 # 输入为 state_before, 输出为 tactic
                 pairs.append({"state": tac["state_before"], "output": tac["tactic"]})
         logger.info(f"Read {len(pairs)} state-tactic paris from {data_path}")
 
+        # 打乱数据
         random.shuffle(pairs)
         data = [
             {
