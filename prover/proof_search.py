@@ -38,22 +38,24 @@ from prover.tactic_generator import (
 )
 
 
+# 存储尝试证明的结果
 @dataclass(frozen=True)
 class SearchResult:
     """The result of attempting to prove a theorem."""
 
-    theorem: Theorem
-    status: Status
-    proof: Optional[List[str]]
+    theorem: Theorem    # 待证明的定理
+    status: Status  # 证明状态(成功/失败/丢弃)
+    proof: Optional[List[str]]  # 证明步骤列表
 
     # Some statistics during proof search.
-    actor_time: float
-    environment_time: float
-    total_time: float
+    actor_time: float   # 模型推理时间
+    environment_time: float # 环境执行时间
+    total_time: float   # 总时间
     num_total_nodes: int
     num_searched_nodes: int
 
 
+# 使用最佳优先搜索算法 (best-first search) 的定理证明器
 class BestFirstSearchProver:
     """A prover that uses best-first search to find proofs using a tactic generator."""
 
@@ -65,10 +67,10 @@ class BestFirstSearchProver:
         num_sampled_tactics: int,
         debug: bool,
     ) -> None:
-        self.tac_gen = tac_gen
+        self.tac_gen = tac_gen  # 策略生成器
         self.tac_gen.initialize()
-        self.timeout = timeout
-        self.max_expansions = max_expansions
+        self.timeout = timeout  # 超时限制
+        self.max_expansions = max_expansions  # 最大扩展次数
         self.num_sampled_tactics = num_sampled_tactics
         self.debug = debug
 
@@ -134,6 +136,9 @@ class BestFirstSearchProver:
             logger.warning(ex)
             return None
 
+    # 1. 初始化优先队列
+    # 2. 循环直到找到证明/失败/超时
+    # 3. 每一步选择最优节点进行扩展
     async def _best_first_search(self) -> None:
         time_start = time.time()
 
@@ -216,6 +221,7 @@ class BestFirstSearchProver:
             )
             self.check_invariants()
 
+    # 使用策略生成器生成下一步可能的证明策略
     @torch.no_grad()
     async def _generate_tactics(self, ts: str) -> List[Tuple[str, float]]:
         t0 = time.time()
@@ -238,6 +244,8 @@ class BestFirstSearchProver:
         logger.debug(f"Tactic suggestions: {suggestions}")
         return suggestions
 
+    # 在证明环境中执行策略
+    # 更新搜索树
     def _run_tactic(
         self, node: InternalNode, tactic: str, logprob: float, priority_queue
     ) -> Tuple[Edge, bool]:
@@ -304,6 +312,7 @@ class BestFirstSearchProver:
                 node.check_invariants()
 
 
+# Ray actor 用于并行运行多个证明器实例
 @ray.remote
 class ProverActor:
     """Ray actor for running an instance of `BestFirstSearchProver`."""
@@ -367,6 +376,7 @@ class VllmActor:
         return final_output
 
 
+# 使用 Ray 来并行 proof search
 class DistributedProver:
     """A distributed prover that uses Ray to parallelize the proof search.
 
@@ -403,6 +413,7 @@ class DistributedProver:
             assert indexed_corpus_path is None
             vllm_actor = VllmActor.options(num_gpus=num_gpus).remote(gen_ckpt_path)
             ray.get(vllm_actor.initialize.remote())
+            # 使用 VllmGenerator 加载 tactic generator
             tac_gen = VllmGenerator(vllm_actor)
         elif indexed_corpus_path is not None:
             device = torch.device("cuda") if num_gpus > 0 else torch.device("cpu")
@@ -422,14 +433,17 @@ class DistributedProver:
                 gen_ckpt_path, device, max_inp_seq_len, max_oup_seq_len, length_penalty
             )
 
+        # 是否进行分布式计算
         self.distributed = num_workers > 1
         if not self.distributed:
             assert num_gpus <= 1
+            # 如果不进行分布式计算，直接使用单个证明器
             self.prover = BestFirstSearchProver(
                 tac_gen, timeout, max_expansions, num_sampled_tactics, debug
             )
             return
 
+        # 使用分布式计算
         if num_gpus >= 1:
             logger.info(f"Launching {num_workers} workers with {num_gpus} GPUs.")
             if use_vllm:
@@ -437,6 +451,7 @@ class DistributedProver:
                 num_gpus_per_worker = 0
             else:
                 num_gpus_per_worker = num_gpus / num_workers
+            # 加载 num_workers 个 prover
             provers = [
                 ProverActor.options(num_gpus=num_gpus_per_worker).remote(
                     tac_gen,
@@ -460,12 +475,14 @@ class DistributedProver:
                 for _ in range(num_workers)
             ]
 
+        # 初始化一个 ActorPool 实例，并将一组 provers 分配给这个池子，以便进行并行处理。
         self.prover_pool = ActorPool(provers)
 
     def search_unordered(
         self, repo: LeanGitRepo, theorems: List[Theorem], positions: List[Pos]
     ) -> List[Optional[SearchResult]]:
         """Parallel proof search for `theorems`. The order of the results is not guaranteed to match the order of the input."""
+        # self.distributed: 是否进行分布式计算
         if not self.distributed:
             return [
                 self.prover.search(repo, thm, pos)

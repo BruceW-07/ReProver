@@ -21,7 +21,7 @@ from retrieval.model import PremiseRetriever
 
 torch.set_float32_matmul_precision("medium")
 
-
+# 计算前 k 正确率: 对每个 state, 使用束搜索 (beam search) 生成 k 个 tactics. 若这 k 个 tactics 中包含 state 对应的 tactic, 则判定为正确.
 class TopkAccuracy(Metric):
     is_differentiable: Optional[bool] = False
     higher_is_better: Optional[bool] = True
@@ -33,6 +33,7 @@ class TopkAccuracy(Metric):
         self.add_state("correct", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("total", default=torch.tensor(0), dist_reduce_fx="sum")
 
+    # 新加入一个 batch 更新 topk 准确率
     def update(self, batch_preds: List[List[str]], batch_gt: List[str]):
         assert len(batch_preds) == len(batch_gt)
         for preds, gt in zip(batch_preds, batch_gt):
@@ -42,9 +43,9 @@ class TopkAccuracy(Metric):
             self.correct += gt in preds[: self.k]
         self.total += len(batch_gt)
 
+    # 计算总的 topk 准确率
     def compute(self) -> float:
         return self.correct.float() / self.total
-
 
 class RetrievalAugmentedGenerator(pl.LightningModule):
     def __init__(
@@ -123,6 +124,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
     # 训练一个 batch, 返回 loss
     def training_step(self, batch, batch_idx: int):
         # 模型前向传播：通过调用 self(...) 处理输入数据，包括状态 ID (state_ids)、状态掩码 (state_mask) 和策略 ID (tactic_ids)，计算得到损失值。
+        # (pytorch 特性, 使用 self(...) 代替 self.forward(...))
         loss = self(
             batch["state_ids"],
             batch["state_mask"],
@@ -153,10 +155,14 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
         tactic_ids: torch.LongTensor,
     ) -> None:
         inp = self.tokenizer.decode(state_ids[0], skip_special_tokens=True)
+        # 检查 tactic_ids[0] 中的每个元素是否等于 -100。
+        # 如果条件为真，则选择 self.tokenizer.pad_token_id（填充标识符）;
+        # 如果条件为假，则选择 tactic_ids[0] 中的原始值
         oup_ids = torch.where(
             tactic_ids[0] == -100, self.tokenizer.pad_token_id, tactic_ids[0]
         )
         oup = self.tokenizer.decode(oup_ids, skip_special_tokens=True)
+        # 以文本形式记录 state 和 tactic
         self.logger.log_text(
             f"{split}_samples",
             ["state", "tactic"],
@@ -184,6 +190,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
         state_mask = batch["state_mask"]
         tactic_ids = batch["tactic_ids"]
 
+        # 调用 forward 函数计算 loss 
         loss = self(state_ids, state_mask, tactic_ids)
         self.log(f"loss_val", loss, on_step=False, on_epoch=True, sync_dist=True)
         self._log_io_texts("val", state_ids, tactic_ids)
@@ -198,9 +205,11 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
             num_return_sequences=self.num_beams,
             early_stopping=False,
         )
+        # 将生成的策略转换为文本
         output_text = self.tokenizer.batch_decode(output, skip_special_tokens=True)
         batch_size = state_ids.size(0)
         assert len(output_text) == batch_size * self.num_beams
+        # 将生成的策略按对应的 state 分组 (一个 state 对应 num_beams 个策略)
         tactics_pred = [
             output_text[i * self.num_beams : (i + 1) * self.num_beams]
             for i in range(batch_size)
@@ -210,6 +219,7 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
         self.logger.log_text("preds_val", ["tactics"], [[msg]], step=self.global_step)
 
         # Log the topk accuracies.
+        # 记录 topk 准确率
         for k in range(1, self.num_beams + 1):
             topk_acc = self.topk_accuracies[k]
             topk_acc(tactics_pred, batch["tactic"])
@@ -228,12 +238,14 @@ class RetrievalAugmentedGenerator(pl.LightningModule):
 
         from prover.evaluate import evaluate  # Avoid circular import.
 
+        # 保存 generator 和 tokenizer
         gen_ckpt_path = f"{self.trainer.log_dir}/last-generator"
         ret_ckpt_path = f"{self.trainer.log_dir}/last-retriever"
         indexed_corpus_path = f"{self.trainer.log_dir}/last-indexed-corpus.pickle"
         self.generator.save_pretrained(gen_ckpt_path)
         self.tokenizer.save_pretrained(gen_ckpt_path)
 
+        # 保存 retriever 和 indexed corpus (文本集)
         if self.retriever is not None:
             self.retriever.encoder.save_pretrained(ret_ckpt_path)
             self.retriever.tokenizer.save_pretrained(ret_ckpt_path)

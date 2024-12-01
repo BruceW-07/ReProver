@@ -129,7 +129,6 @@ class GeneratorDataset(Dataset):
 
         return batch
 
-
 class GeneratorDataModule(pl.LightningDataModule):
     def __init__(
         self,
@@ -159,7 +158,7 @@ class GeneratorDataModule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-        # self.preds 是一个字典，键为 (file_path, full_name, state)，值为 retrieve 到的数据
+        # self.preds 是一个字典，键为 (file_path, thm_full_name, state)，值为 retrieve 到的数据
         if preds_path is None:
             logger.info("Without retrieval data")
             self.preds = None
@@ -200,7 +199,7 @@ class GeneratorDataModule(pl.LightningDataModule):
                 is_train=False,
             )
 
-    # 返回 pytorch 的DataLoader 对象
+    # 返回 pytorch 的 DataLoader 对象
     def train_dataloader(self) -> DataLoader:
         return DataLoader(
             self.ds_train,

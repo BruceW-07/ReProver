@@ -17,7 +17,8 @@ from lean_dojo import LeanGitRepo, Theorem, Pos, is_available_in_cache
 from common import set_logger
 from prover.proof_search import Status, DistributedProver
 
-
+# 从数据集文件加载定理
+# 支持按文件路径、定理名等过滤
 def _get_theorems(
     data_path: str,
     split: str,
@@ -90,7 +91,11 @@ def _get_theorems_from_files(
 
     return repo, theorems, positions
 
-
+# 1. 加定理数据
+# 2. 初始化分布式证明器
+# 3. 执行证明搜索
+# 4. 计算统计指标(证明成功率等)
+# 5. 保存结果载
 def evaluate(
     data_path: str,
     exp_id: Optional[str] = None,
@@ -171,7 +176,9 @@ def evaluate(
 
     return pass_1
 
-
+# 解析命令行参数
+# 执行评估
+# 输出结果
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Script for evaluating the prover on theorems extracted by LeanDojo."
