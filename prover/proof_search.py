@@ -37,7 +37,7 @@ from prover.tactic_generator import (
     VllmGenerator,
 )
 
-
+# check local user.name
 # 存储尝试证明的结果
 @dataclass(frozen=True)
 class SearchResult:
