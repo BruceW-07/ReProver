@@ -1,3 +1,5 @@
+# 加载 tactic generator
+
 import ray
 import openai
 from lean_dojo import Pos

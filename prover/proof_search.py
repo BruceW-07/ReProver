@@ -44,15 +44,15 @@ class SearchResult:
     """The result of attempting to prove a theorem."""
 
     theorem: Theorem    # 待证明的定理
-    status: Status  # 证明状态(成功/失败/丢弃)
+    status: Status  # 证明状态(成功/失败/开放)
     proof: Optional[List[str]]  # 证明步骤列表
 
     # Some statistics during proof search.
     actor_time: float   # 模型推理时间
     environment_time: float # 环境执行时间
     total_time: float   # 总时间
-    num_total_nodes: int
-    num_searched_nodes: int
+    num_total_nodes: int    # 搜索树中节点数量
+    num_searched_nodes: int     # 搜索过的节点数量(扩展次数)(包含重复节点)
 
 
 # 使用最佳优先搜索算法 (best-first search) 的定理证明器
@@ -79,6 +79,7 @@ class BestFirstSearchProver:
         self.environment_time = 0.0
         self.total_time = None
 
+    # 证明定理, 返回结果
     def search(
         self, repo: LeanGitRepo, thm: Theorem, pos: Pos
     ) -> Optional[SearchResult]:
@@ -97,6 +98,7 @@ class BestFirstSearchProver:
             imps = []
 
         try:
+            # 开始定理证明
             with Dojo(thm, self.timeout, additional_imports=imps) as (
                 dojo,
                 init_state,
@@ -109,6 +111,7 @@ class BestFirstSearchProver:
                 self.nodes = {init_state: self.root}
 
                 try:
+                    # asyncio.run 是一个用于运行异步协程的函数，它会创建一个新的事件循环并在该循环中运行传入的协程，直到协程完成。
                     asyncio.run(self._best_first_search())
                 except DojoCrashError as ex:
                     logger.warning(f"Dojo crashed with {ex} when proving {thm}")
@@ -139,10 +142,11 @@ class BestFirstSearchProver:
     # 1. 初始化优先队列
     # 2. 循环直到找到证明/失败/超时
     # 3. 每一步选择最优节点进行扩展
-    async def _best_first_search(self) -> None:
+    async def _best_first_search(self) -> None:     # async 是 Python 中用于定义异步函数的关键字
         time_start = time.time()
 
         priority_queue = asyncio.PriorityQueue()
+        # priority: cumulative_logprob
         priority_queue.put_nowait((-self.root.priority, self.root))
 
         while True:
@@ -156,6 +160,7 @@ class BestFirstSearchProver:
                 assert time.time() - time_start >= self.timeout
 
             self.total_time = time.time() - time_start
+            # 到了限定时间 或 扩张次数大于最大扩张次数
             if self.total_time > self.timeout or (
                 self.max_expansions is not None
                 and self.num_expansions > self.max_expansions
@@ -174,6 +179,8 @@ class BestFirstSearchProver:
                 logger.info("Found a proof!")
                 break
 
+    # 选取优先级最高的 node, 使用 generator 生成策略，尝试每个策略
+    # 将结果存在 search_node 的 out_edges 中
     async def _step(self, priority_queue):
         """
         Perform a single step of search.
@@ -228,6 +235,7 @@ class BestFirstSearchProver:
 
         path = str(self.theorem.file_path)
 
+        # 如果 theorem 不在当前 repo 中，需要指定完整路径
         if self.theorem.repo != self.repo:
             path = self.theorem.repo.get_packages_dir() / self.theorem.repo.name / path
 
@@ -245,7 +253,8 @@ class BestFirstSearchProver:
         return suggestions
 
     # 在证明环境中执行策略
-    # 更新搜索树
+    # 将新得到的状态计算优先级, 加入优先队列中
+    # 返回原node到新node的边, 以及是否证明成功
     def _run_tactic(
         self, node: InternalNode, tactic: str, logprob: float, priority_queue
     ) -> Tuple[Edge, bool]:
