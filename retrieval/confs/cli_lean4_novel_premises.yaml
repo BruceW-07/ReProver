@@ -15,7 +15,8 @@ trainer:
       name: null
       save_dir: null
   gradient_clip_val: 1.0
-  max_steps: 800000
+  # max_steps: 800000
+  max_steps: 400000
   callbacks:
     - class_path: pytorch_lightning.callbacks.LearningRateMonitor
       init_args: 
